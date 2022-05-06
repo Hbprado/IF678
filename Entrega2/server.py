@@ -25,6 +25,26 @@ def make_pkt(message, seqNum):
         'seq': seqNum
     }).encode()
 
+class Data:
+    def __init__(self, mesa, nome, src):
+        self.mesa = mesa
+        self.nome = nome
+        self.src = src
+        self.pedidos = []
+    def addPedidos(self, nome, prato, valor):
+        self.pedidos.append((nome, prato, valor))
+    def contaIndividual(self, nome):
+        valorTotal = 0
+        for i in range(len(self.pedidos)):
+            if self.pedidos[i][0] == nome:
+                valorTotal+=self.pedidos[i][2]
+                print(self.pedidos[i][1], valorTotal)
+
+       
+
+
+
+
 serverIP = ''
 serverPort = 5001
 
@@ -125,10 +145,13 @@ elif option == 2:
             seqNumber = 1 - seqNumber # Alteramos o número de sequência
 
             # Fazemos o envio da resposta do servidor para o cliente: "Entendido!"
-            response = "Entendido"
-            respCheck = checksum_calc(response)
-            udpSocketServer.sendto(f"{respCheck}{gap}{response}{gap}{seqNumber}".encode('utf-8'), source)
-
+            if pktMessage == "Chefia":
+                response = "Digite sua mesa:   "
+                respCheck = checksum_calc(response)
+                udpSocketServer.sendto(f"{respCheck}{gap}{response}{gap}{seqNumber}".encode('utf-8'), source)
+            dados = Data(response, "josias", source)
+            dados.addPedidos("josias", "sushi", 27)
+            #dados.contaIndividual("josias")
 
             # No rdt3.0, ao enviarmos um pacote, ficamos esperando em loop até que chegue o ACK correto.
             # Ou seja, caso chegue o ACK do pacote errado, continuamos esperando. Caso esperemos demais,

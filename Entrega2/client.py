@@ -18,7 +18,32 @@ def checksum_calc(msg):
         s = carry(s, w)
     return ~s & 0xffff
 
-serverIP = "127.0.0.1"
+
+class Data:
+    def __init__(self, mesa, nome, src):
+        self.mesa = mesa
+        self.nome = nome
+        self.src = src
+        self.pedidos = []
+    def addPedidos(self, nome, prato, valor):
+        self.pedidos.append((nome, prato, valor))
+    def contaIndividual(self, nome):
+        valorTotal = 0
+        for i in range(len(self.pedidos)):
+            if self.pedidos[i][0] == nome:
+                valorTotal+=self.pedidos[i][2]
+                print(self.pedidos[i][1], valorTotal)
+
+        
+    
+
+    
+
+
+
+
+
+serverIP = ''
 serverPort = 5001
 
 seqNumber = 0
@@ -71,7 +96,7 @@ elif option == 2:
 
     while flag == 1:
 
-        clientMessage = input("Sua mensagem: ") # Pegamos entrada do teclado
+        clientMessage = input("Aguardando comando: ") # Pegamos entrada do teclado
         checksum = checksum_calc(clientMessage)
     
         if clientMessage == "SAIR":
@@ -112,6 +137,9 @@ elif option == 2:
         pktMessage, source = udpSocketClient.recvfrom(1024) 
         seqNumber = 1 - seqNumber # Fazemos a alteração do número de sequência
         pktMessage = pktMessage.decode('utf-8')
+        #data.append(pktMessage)
+
+
 
         pktChecksum, pktMessage, pktSeqNumber = pktMessage.split(gap) # Separamos as informações do pacote, usando a variável 'gap' no split
         mainMessage = pktMessage
