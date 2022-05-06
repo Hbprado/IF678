@@ -1,6 +1,7 @@
 import socket
 import os
 import zlib
+import time
 
 def carry(a, b):
     c = a + b
@@ -34,6 +35,8 @@ print("1 - Receber arquivos para teste")
 print("2 - Chat Cliente-Servidor")
 
 option = int(input())
+print("-----------------------")
+print("")
 
 gap = "<gap>"
 
@@ -80,24 +83,34 @@ elif option == 2:
     udpSocketServer.bind(server) # O bind serve para que o servidor comece a escutar o IP e a Porta definida anteriormente
 
     while flag == 1:
-        clientMessage, source = udpSocketServer.recvfrom(1024) # O 1024 representa o tamanho do buffer
-        clientMessage = clientMessage.decode('utf-8')
+        auxWhile = 1
+        while auxWhile:
+            try:
+                clientMessage, source = udpSocketServer.recvfrom(1024) # Recebemos a mensagem do cliente
+            except:
+                auxWhile = 1
+            else:
+                auxWhile = 0
+        
+        clientMessage = clientMessage.decode('utf-8') # Decodificamos a mensagem
 
-        pktChecksum, pktMessage, pktSeqNumber = clientMessage.split(gap) # Separamos o nome e o tamanho usando a variável 'gap' no split
+        pktChecksum, pktMessage, pktSeqNumber = clientMessage.split(gap) # Separamos as informações do pacote, usando a variável 'gap' no split
 
+        # Caso o checksum da mensagem e o checksum calculado da mensagem recebido sejam diferentes
+        # vamos pedir a retransmissão com um ACK de número de sequência errado
         if str(checksum_calc(pktMessage)) != pktChecksum:
-            message = bytes('ACK', 'utf8')
+            message = "ACK"
             check = checksum_calc(message)
-            print("Corrupted 1")
             udpSocketServer.sendto(f"{check}{gap}{message}{gap}{1 - seqNumber}".encode('utf-8'), source)
 
-            retry, aux = udpSocketServer.recvfrom(1024) # O 1024 representa o tamanho do buffer
+            retry, aux = udpSocketServer.recvfrom(1024) # Recebemos novamente a mensagem do cliente
             retry = retry.decode('utf-8')
 
-            retryChecksum, retryMessage, retrySeqNumber = retry.split(gap) # Separamos o nome e o tamanho usando a variável 'gap' no split
+            retryChecksum, retryMessage, retrySeqNumber = retry.split(gap) # Separamos as informações do pacote, usando a variável 'gap' no split
 
+            # Caso o checksum da mensagem e o checksum calculado da mensagem recebido sejam diferentes novamente
+            # vamos avisar com um ACK errado novamente e encerrar a conexão
             if str(checksum_calc(retryMessage)) != retryChecksum:
-                print("Corrupted 2... bye!")
                 udpSocketServer.sendto(f"{check}{gap}{message}{gap}{1 - seqNumber}".encode('utf-8'), source)
                 flag = 0            
 
@@ -105,31 +118,46 @@ elif option == 2:
             print ("A conexão foi encerrada pelo cliente...")
             flag = 0
         else:
+            # Se tudo estiver certo, vamos enviar um ACK correto
             message = "ACK"
             check = checksum_calc(message)
             udpSocketServer.sendto(f"{check}{gap}{message}{gap}{seqNumber}".encode('utf-8'), source)
             print (source[0], ":", pktMessage)
-            seqNumber = 1 - seqNumber
+            seqNumber = 1 - seqNumber # Alteramos o número de sequência
 
-            response = "Entendido!"
+            # Fazemos o envio da resposta do servidor para o cliente: "Entendido!"
+            response = "Entendido"
             respCheck = checksum_calc(response)
             udpSocketServer.sendto(f"{respCheck}{gap}{response}{gap}{seqNumber}".encode('utf-8'), source)
 
-            isACK, source = udpSocketServer.recvfrom(4096) # Recebemos os dados contendo nome e tamanho do arquivo
-            isACK = isACK.decode('utf-8')
 
-            ackChecksum, ackMessage, ackSeqNumber = isACK.split(gap) # Separamos o nome e o tamanho usando a variável 'gap' no split
+            # No rdt3.0, ao enviarmos um pacote, ficamos esperando em loop até que chegue o ACK correto.
+            # Ou seja, caso chegue o ACK do pacote errado, continuamos esperando. Caso esperemos demais,
+            # o temporizador vai estourar, então faremos reenvio do pacote e o reset o temporizador.
+            
+            # ATIVAR TIMER
+            auxWhile = 1 # Variável auxiliar para o loop
+            flagWhile = 1 #  Flag para controlar o loop
+            while auxWhile:
+                udpSocketServer.settimeout(0.6) # Definimos o tempo do nosso temporizador
+                try:
+                    isACK, source = udpSocketServer.recvfrom(4096) # Esperamos o ACK do nosso pacote
+                    isACK = isACK.decode('utf-8') # Decodificamos o pacote recebido
 
-            if ackChecksum != str(checksum_calc(ackMessage)) or ackSeqNumber != seqNumber:
-                udpSocketServer.sendto(f"{respCheck}{gap}{response}{gap}{seqNumber}".encode('utf-8'), source)
+                    ackChecksum, ackMessage, ackSeqNumber = isACK.split(gap) # Separamos as informações do pacote, usando a variável 'gap' no split
 
-                isACK2, source = udpSocketServer.recvfrom(4096) # Recebemos os dados contendo nome e tamanho do arquivo
-                isACK2 = isACK2.decode('utf-8')
+                    # Caso o checksum do ACK e o checksum calculado do ACK recebido sejam diferentes
+                    # Ou o número de sequência seja do pacote errado, iremos apenas continuar no loop, aguardando o ACK correto
+                    if ackChecksum != str(checksum_calc(ackMessage)) or ackSeqNumber != str(seqNumber):
+                        flagWhile = 1 # Ficamos no loop
+                    else:
+                        flagWhile = 0 # Saímos do loop
 
-                ack2Checksum, ack2Message, ack2SeqNumber = isACK2.split(gap) # Separamos o nome e o tamanho usando a variável 'gap' no split
-
-                if ack2Checksum != str(checksum_calc(ack2Message)) or ack2SeqNumber != seqNumber:
-                    flag = 0
+                except socket.timeout: # Caso o temporizador estoure, fazemos o reenvio da mensagem
+                    udpSocketServer.sendto(f"{respCheck}{gap}{response}{gap}{seqNumber}".encode('utf-8'), source)
+                else: # Caso recebamos um pacote no "try", checamos se a flagWhile foi alterada
+                    if flagWhile == 0: # Se é igual a zero, quer dizer que recebemos o ACK correto
+                        auxWhile = 0
 
             
             
