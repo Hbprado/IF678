@@ -28,7 +28,7 @@ print(" Obs.: Você precisa ter um arquivo 'teste.txt' na sua máquina")
 print("2 - Chat Cliente-Servidor")
 
 option = int(input())
-print("-----------------------")
+print("----------------------")
 print("")
 
 gap = "<gap>"

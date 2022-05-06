@@ -1,6 +1,5 @@
 import socket
 import os
-import zlib
 import time
 
 def carry(a, b):
