@@ -19,6 +19,14 @@ def checksum_calc(msg):
         s = carry(s, w)
     return ~s & 0xffff
 
+def contaMesa(clientsTable, client):
+    soma = 0
+    for i in range(len(clientsTable)):
+        if clientsTable[i].mesa == client.mesa and clientsTable[i].name != client.name:
+            for j in range(len(clientsTable[i].pedidos)):
+                soma += clientsTable[i].pedidos[j].price
+    return soma
+
 @dataclass
 class clientInfo:
     id: int
@@ -351,10 +359,189 @@ elif option == 2:
                         auxWhile = 0
 
         elif pktMessage == "4": # CONTA DA MESA
-            flag = 0
+            # Se tudo estiver certo, vamos enviar um ACK correto
+            message = "ACK"
+            check = checksum_calc(message)
+            udpSocketServer.sendto(f"{check}{gap}{message}{gap}{seqNumber}".encode('utf-8'), source)
+            print (source[0], ":", pktMessage)
+            seqNumber = 1 - seqNumber # Alteramos o número de sequência
+
+            # Fazemos o envio da resposta do servidor para o cliente: "Entendido!"
+            for client in clientsTable:
+                if client.socket == source:
+                    total = contaMesa(clientsTable, client)
+                    response = f"\n> Conta total da mesa {client.mesa} foi de {total} < \n"
+                    
+                    
+                        
+
+            respCheck = checksum_calc(response)
+            udpSocketServer.sendto(f"{respCheck}{gap}{response}{gap}{seqNumber}".encode('utf-8'), source)
+
+            # No rdt3.0, ao enviarmos um pacote, ficamos esperando em loop até que chegue o ACK correto.
+            # Ou seja, caso chegue o ACK do pacote errado, continuamos esperando. Caso esperemos demais,
+            # o temporizador vai estourar, então faremos reenvio do pacote e o reset o temporizador.
+            
+            # ATIVAR TIMER
+            auxWhile = 1 # Variável auxiliar para o loop
+            flagWhile = 1 #  Flag para controlar o loop
+            while auxWhile:
+                udpSocketServer.settimeout(0.6) # Definimos o tempo do nosso temporizador
+                try:
+                    isACK, source = udpSocketServer.recvfrom(4096) # Esperamos o ACK do nosso pacote
+                    isACK = isACK.decode('utf-8') # Decodificamos o pacote recebido
+
+                    ackChecksum, ackMessage, ackSeqNumber = isACK.split(gap) # Separamos as informações do pacote, usando a variável 'gap' no split
+
+                    # Caso o checksum do ACK e o checksum calculado do ACK recebido sejam diferentes
+                    # Ou o número de sequência seja do pacote errado, iremos apenas continuar no loop, aguardando o ACK correto
+                    if ackChecksum != str(checksum_calc(ackMessage)) or ackSeqNumber != str(seqNumber):
+                        flagWhile = 1 # Ficamos no loop
+                    else:
+                        flagWhile = 0 # Saímos do loop
+
+                except socket.timeout: # Caso o temporizador estoure, fazemos o reenvio da mensagem
+                    udpSocketServer.sendto(f"{respCheck}{gap}{response}{gap}{seqNumber}".encode('utf-8'), source)
+                else: # Caso recebamos um pacote no "try", checamos se a flagWhile foi alterada
+                    if flagWhile == 0: # Se é igual a zero, quer dizer que recebemos o ACK correto
+                        auxWhile = 0
+
 
         elif pktMessage == "5": # PAGAMENTO
-            flag = 0
+            # Se tudo estiver certo, vamos enviar um ACK correto
+            message = "ACK"
+            check = checksum_calc(message)
+            udpSocketServer.sendto(f"{check}{gap}{message}{gap}{seqNumber}".encode('utf-8'), source)
+            print (source[0], ":", pktMessage)
+            seqNumber = 1 - seqNumber # Alteramos o número de sequência
+
+            # Fazemos o envio da resposta do servidor para o cliente: "Entendido!"
+            for client in clientsTable:
+                if client.socket == source:
+                    total = 0
+                    response = f"\n> Sua conta {client.name} da mesa {client.mesa} < \n"
+                    for food in client.pedidos:
+                        response += f"{food.name} __________ {food.price}\n"
+                        total += food.price
+                    response += f"-------- TOTAL = {round(total, 2)}, Quanto deseja pagar?: \n"
+                    
+
+
+            respCheck = checksum_calc(response)
+            udpSocketServer.sendto(f"{respCheck}{gap}{response}{gap}{seqNumber}".encode('utf-8'), source)
+
+            # No rdt3.0, ao enviarmos um pacote, ficamos esperando em loop até que chegue o ACK correto.
+            # Ou seja, caso chegue o ACK do pacote errado, continuamos esperando. Caso esperemos demais,
+            # o temporizador vai estourar, então faremos reenvio do pacote e o reset o temporizador.
+            
+            # ATIVAR TIMER
+            auxWhile = 1 # Variável auxiliar para o loop
+            flagWhile = 1 #  Flag para controlar o loop
+            while auxWhile:
+                udpSocketServer.settimeout(0.6) # Definimos o tempo do nosso temporizador
+                try:
+                    isACK, source = udpSocketServer.recvfrom(4096) # Esperamos o ACK do nosso pacote
+                    isACK = isACK.decode('utf-8') # Decodificamos o pacote recebido
+
+                    ackChecksum, ackMessage, ackSeqNumber = isACK.split(gap) # Separamos as informações do pacote, usando a variável 'gap' no split
+
+                    # Caso o checksum do ACK e o checksum calculado do ACK recebido sejam diferentes
+                    # Ou o número de sequência seja do pacote errado, iremos apenas continuar no loop, aguardando o ACK correto
+                    if ackChecksum != str(checksum_calc(ackMessage)) or ackSeqNumber != str(seqNumber):
+                        flagWhile = 1 # Ficamos no loop
+                    else:
+                        flagWhile = 0 # Saímos do loop
+
+                except socket.timeout: # Caso o temporizador estoure, fazemos o reenvio da mensagem
+                    udpSocketServer.sendto(f"{respCheck}{gap}{response}{gap}{seqNumber}".encode('utf-8'), source)
+                else: # Caso recebamos um pacote no "try", checamos se a flagWhile foi alterada
+                    if flagWhile == 0: # Se é igual a zero, quer dizer que recebemos o ACK correto
+                        auxWhile = 0
+            # Após sabermos que o nosso pedido de mesa chegou tudo ok, vamos esperar a resposta do cliente
+            auxWhile = 1
+            while auxWhile:
+                try:
+                    clientMessage, source = udpSocketServer.recvfrom(1024) # Recebemos a mensagem do cliente
+                except:
+                    auxWhile = 1
+                else:
+                    auxWhile = 0
+            
+            clientMessage = clientMessage.decode('utf-8') # Decodificamos a mensagem
+
+            pktChecksum, pktMessage, pktSeqNumber = clientMessage.split(gap) # Separamos as informações do pacote, usando a variável 'gap' no split
+
+            # salvamos a mesa do cliente
+            pedido = pktMessage
+
+            # Caso o checksum da mensagem e o checksum calculado da mensagem recebido sejam diferentes
+            # vamos pedir a retransmissão com um ACK de número de sequência errado
+            if str(checksum_calc(pktMessage)) != pktChecksum:
+                message = "ACK"
+                check = checksum_calc(message)
+                udpSocketServer.sendto(f"{check}{gap}{message}{gap}{1 - seqNumber}".encode('utf-8'), source)
+
+                retry, aux = udpSocketServer.recvfrom(1024) # Recebemos novamente a mensagem do cliente
+                retry = retry.decode('utf-8')
+
+                retryChecksum, retryMessage, retrySeqNumber = retry.split(gap) # Separamos as informações do pacote, usando a variável 'gap' no split
+
+                # Salvamos a mesa do cliente novamente
+                pedido = retryMessage
+
+                # Caso o checksum da mensagem e o checksum calculado da mensagem recebido sejam diferentes novamente
+                # vamos avisar com um ACK errado novamente e encerrar a conexão
+                if str(checksum_calc(retryMessage)) != retryChecksum:
+                    udpSocketServer.sendto(f"{check}{gap}{message}{gap}{1 - seqNumber}".encode('utf-8'), source)
+                    flag = 0
+
+            # Se tudo estiver certo, vamos enviar um ACK correto
+            message = "ACK"
+            check = checksum_calc(message)
+            udpSocketServer.sendto(f"{check}{gap}{message}{gap}{seqNumber}".encode('utf-8'), source)
+            print (source[0], ":", pktMessage)
+            seqNumber = 1 - seqNumber # Alteramos o número de sequência
+
+            if float(pktMessage) < total:
+                response = f"Opa, resta pagar: {total-float(pktMessage)}"
+            elif float(pktMessage) == total:
+                response = f"Conta paga com sucesso!"
+                # Faço a remoção do cliente
+                for client in clientsTable:
+                    if client.socket == source:
+                        clientsTable.pop(clientsTable.index(client))
+            elif float(pktMessage) > total:
+                response = f"Opa, voce pagou {float(pktMessage)-total} a mais!"
+            respCheck = checksum_calc(response)
+            udpSocketServer.sendto(f"{respCheck}{gap}{response}{gap}{seqNumber}".encode('utf-8'), source)
+
+            # No rdt3.0, ao enviarmos um pacote, ficamos esperando em loop até que chegue o ACK correto.
+            # Ou seja, caso chegue o ACK do pacote errado, continuamos esperando. Caso esperemos demais,
+            # o temporizador vai estourar, então faremos reenvio do pacote e o reset o temporizador.
+            
+            # ATIVAR TIMER
+            auxWhile = 1 # Variável auxiliar para o loop
+            flagWhile = 1 #  Flag para controlar o loop
+            while auxWhile:
+                udpSocketServer.settimeout(0.6) # Definimos o tempo do nosso temporizador
+                try:
+                    isACK, source = udpSocketServer.recvfrom(4096) # Esperamos o ACK do nosso pacote
+                    isACK = isACK.decode('utf-8') # Decodificamos o pacote recebido
+
+                    ackChecksum, ackMessage, ackSeqNumber = isACK.split(gap) # Separamos as informações do pacote, usando a variável 'gap' no split
+
+                    # Caso o checksum do ACK e o checksum calculado do ACK recebido sejam diferentes
+                    # Ou o número de sequência seja do pacote errado, iremos apenas continuar no loop, aguardando o ACK correto
+                    if ackChecksum != str(checksum_calc(ackMessage)) or ackSeqNumber != str(seqNumber):
+                        flagWhile = 1 # Ficamos no loop
+                    else:
+                        flagWhile = 0 # Saímos do loop
+
+                except socket.timeout: # Caso o temporizador estoure, fazemos o reenvio da mensagem
+                    udpSocketServer.sendto(f"{respCheck}{gap}{response}{gap}{seqNumber}".encode('utf-8'), source)
+                else: # Caso recebamos um pacote no "try", checamos se a flagWhile foi alterada
+                    if flagWhile == 0: # Se é igual a zero, quer dizer que recebemos o ACK correto
+                        auxWhile = 0
 
         elif pktMessage == "6": # SAIR
             # Se tudo estiver certo, vamos enviar um ACK correto
@@ -402,7 +589,7 @@ elif option == 2:
                     if flagWhile == 0: # Se é igual a zero, quer dizer que recebemos o ACK correto
                         auxWhile = 0
 
-        elif pktMessage == "chefia":
+        elif pktMessage == "Chefia":
             # Se tudo estiver certo, vamos enviar um ACK correto
             message = "ACK"
             check = checksum_calc(message)
